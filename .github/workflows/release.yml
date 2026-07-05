@@ -112,25 +112,54 @@ jobs:
           echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
           echo "Releasing v$NEW (bump: ${{ steps.bump.outputs.type }}, from $CUR)"
 
-      - name: Build
+      # If a prior run published this version but failed to push (see below), the
+      # version is on PyPI but not tagged. Detect that and skip re-publishing
+      # (PyPI rejects duplicates) — we'll still reconcile the tag/commit.
+      - name: Check whether this version is already on PyPI
+        id: pypicheck
         if: steps.bump.outputs.release == 'true'
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://pypi.org/pypi/orth/${{ steps.version.outputs.version }}/json")"
+          if [ "$code" = "200" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "orth ${{ steps.version.outputs.version }} already on PyPI — skipping publish, reconciling tag only."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.bump.outputs.release == 'true' && steps.pypicheck.outputs.published != 'true'
         run: |
           python -m pip install --upgrade build
           python -m build
 
-      # PyPI publish is irreversible, so it runs before the git push; a failed
-      # push afterward leaves git behind PyPI (recoverable) rather than the reverse.
       - name: Publish to PyPI (Trusted Publishing)
-        if: steps.bump.outputs.release == 'true'
+        if: steps.bump.outputs.release == 'true' && steps.pypicheck.outputs.published != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
 
-      - name: Commit, tag, and push
+      # Commit the bump + tag and push to main. If main advanced during the run,
+      # the push is rejected; rebase the version-only commit onto latest main,
+      # move the tag to it, and retry — so PyPI and git can't desync and a queued
+      # re-run never gets stuck re-publishing the same version.
+      - name: Commit, tag, and push (rebase-retry)
         if: steps.bump.outputs.release == 'true'
         run: |
+          tag="${{ steps.version.outputs.tag }}"
           git add pyproject.toml
-          git commit -m "chore(release): ${{ steps.version.outputs.version }}"
-          git tag -a "${{ steps.version.outputs.tag }}" -m "${{ steps.version.outputs.tag }}"
-          git push origin HEAD:main --follow-tags
+          git commit -m "chore(release): ${{ steps.version.outputs.version }}" || echo "nothing to commit"
+          for attempt in 1 2 3 4 5; do
+            git tag -f "$tag" >/dev/null
+            if git push origin "HEAD:main" "refs/tags/$tag"; then
+              echo "Pushed $tag on attempt $attempt"
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt) — rebasing onto latest main"
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "::error::orth ${{ steps.version.outputs.version }} is published but pushing the release commit/tag failed after retries. Reconcile main manually."
+          exit 1
 
       - name: Create GitHub Release
         if: steps.bump.outputs.release == 'true'
