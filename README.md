@@ -4,7 +4,7 @@
 
 **Python SDK for calling APIs on the [Orthogonal](https://orthogonal.com) platform.**
 
-Call APIs from the Orthogonal marketplace through one client and one credit balance — authentication, routing, and billing are handled for you.
+Call any API on the Orthogonal platform through one client and one credit balance — authentication, routing, and billing are handled for you.
 
 [![python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -26,7 +26,7 @@ Call APIs from the Orthogonal marketplace through one client and one credit bala
 
 ## Why Orthogonal
 
-Orthogonal is a marketplace of production APIs behind one account and one balance:
+Orthogonal puts a catalog of APIs behind one account and one balance:
 
 - **One integration** — call any API on the platform through a single `run()` method.
 - **Pay per use** — a single credit balance instead of juggling dozens of provider subscriptions.
