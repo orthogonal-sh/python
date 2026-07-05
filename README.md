@@ -6,8 +6,10 @@
 
 Call any API on the Orthogonal platform through one client and one credit balance — authentication, routing, and billing are handled for you.
 
-[![python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
-[![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/orth.svg?logo=pypi&logoColor=white&color=006dad)](https://pypi.org/project/orth/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/orth.svg?color=006dad)](https://pypi.org/project/orth/)
+[![python](https://img.shields.io/pypi/pyversions/orth.svg?logo=python&logoColor=white)](https://pypi.org/project/orth/)
+[![license](https://img.shields.io/pypi/l/orth.svg?color=blue)](./LICENSE)
 
 </div>
 
