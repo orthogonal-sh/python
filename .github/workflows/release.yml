@@ -1,0 +1,170 @@
+name: Release
+
+# Publishes `orth` to PyPI. Triggers:
+#   • push to main  — auto-release on every merge; the bump is inferred from the
+#                     merged commits (feat!/BREAKING → major, feat → minor, else
+#                     patch).
+#   • workflow_dispatch — manual run with an explicit bump.
+# Bumps the version in pyproject.toml, builds, publishes via PyPI Trusted
+# Publishing (OIDC — no token), tags the release, and cuts a GitHub Release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Don't re-release the workflow's own version-bump commit. (Pushes with
+    # GITHUB_TOKEN don't retrigger workflows anyway; this is belt-and-suspenders.)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !startsWith(github.event.head_commit.message, 'chore(release):')
+    permissions:
+      contents: write # push the version-bump commit + tag, create the Release
+      id-token: write # PyPI Trusted Publishing (OIDC)
+    steps:
+      - name: Guard — main only
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Release must be run from 'main' (got ${{ github.ref }})."
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Manual runs use the chosen bump; auto (push) runs infer it from commits
+      # since the last tag — and SKIP when there are none (no duplicate release).
+      - name: Determine version bump
+        id: bump
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "type=${{ inputs.bump }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          if [ -z "$LAST_TAG" ]; then
+            echo "No prior tag — defaulting to patch."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RANGE="$LAST_TAG..HEAD"
+          if [ "$(git rev-list --count "$RANGE")" = "0" ]; then
+            echo "No commits since $LAST_TAG — skipping release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          # feat/major intent lives in the SUBJECT; only "BREAKING CHANGE" is a
+          # body/footer marker — check each from the right place.
+          SUBJECTS="$(git log --format=%s "$RANGE")"
+          BODIES="$(git log --format=%B "$RANGE")"
+          if echo "$SUBJECTS" | grep -qE "^[a-z]+(\(.+\))?!:" \
+            || echo "$BODIES" | grep -qE "^BREAKING CHANGE:"; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$SUBJECTS" | grep -qE "^(feat|feature)(\(.+\))?:"; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump version in pyproject.toml
+        id: version
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          CUR="$(python -c "import re;print(re.search(r'^version\s*=\s*\"([^\"]+)\"', open('pyproject.toml').read(), re.M).group(1))")"
+          NEW="$(python -c "a,b,c=map(int,'$CUR'.split('.'));t='${{ steps.bump.outputs.type }}';print(f'{a+1}.0.0' if t=='major' else (f'{a}.{b+1}.0' if t=='minor' else f'{a}.{b}.{c+1}'))")"
+          python - "$NEW" <<'PY'
+          import re, sys
+          new = sys.argv[1]
+          s = open("pyproject.toml").read()
+          s = re.sub(r'^version\s*=\s*"[^"]+"', f'version = "{new}"', s, count=1, flags=re.M)
+          open("pyproject.toml", "w").write(s)
+          PY
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$NEW (bump: ${{ steps.bump.outputs.type }}, from $CUR)"
+
+      # If a prior run published this version but failed to push (see below), the
+      # version is on PyPI but not tagged. Detect that and skip re-publishing
+      # (PyPI rejects duplicates) — we'll still reconcile the tag/commit.
+      - name: Check whether this version is already on PyPI
+        id: pypicheck
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://pypi.org/pypi/orth/${{ steps.version.outputs.version }}/json")"
+          if [ "$code" = "200" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "orth ${{ steps.version.outputs.version }} already on PyPI — skipping publish, reconciling tag only."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.bump.outputs.release == 'true' && steps.pypicheck.outputs.published != 'true'
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Publish to PyPI (Trusted Publishing)
+        if: steps.bump.outputs.release == 'true' && steps.pypicheck.outputs.published != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      # Commit the bump + tag and push to main. If main advanced during the run,
+      # the push is rejected; rebase the version-only commit onto latest main,
+      # move the tag to it, and retry — so PyPI and git can't desync and a queued
+      # re-run never gets stuck re-publishing the same version.
+      - name: Commit, tag, and push (rebase-retry)
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          git add pyproject.toml
+          git commit -m "chore(release): ${{ steps.version.outputs.version }}" || echo "nothing to commit"
+          for attempt in 1 2 3 4 5; do
+            git tag -f "$tag" >/dev/null
+            if git push origin "HEAD:main" "refs/tags/$tag"; then
+              echo "Pushed $tag on attempt $attempt"
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt) — rebasing onto latest main"
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "::error::orth ${{ steps.version.outputs.version }} is published but pushing the release commit/tag failed after retries. Reconcile main manually."
+          exit 1
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
