@@ -38,7 +38,7 @@ Orthogonal puts a catalog of APIs behind one account and one balance:
 Requires **Python 3.9+**.
 
 ```bash
-pip install orthogonal-sdk
+pip install orth
 ```
 
 ## Quick Start
