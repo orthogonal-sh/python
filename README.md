@@ -2,14 +2,12 @@
 
 # Orthogonal Python SDK
 
-**Call any API on the [Orthogonal](https://orthogonal.com) platform from Python — one client, one balance.**
+**Python SDK for calling APIs on the [Orthogonal](https://orthogonal.com) platform.**
 
-Reach hundreds of production APIs through a single client and a single credit balance. No per-provider signups, keys, or contracts — authentication, routing, and billing are handled for you.
+Call APIs from the Orthogonal marketplace through one client and one credit balance — authentication, routing, and billing are handled for you.
 
-[![PyPI version](https://img.shields.io/pypi/v/orthogonal-sdk.svg?logo=pypi&logoColor=white&color=006dad)](https://pypi.org/project/orthogonal-sdk/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/orthogonal-sdk.svg?color=006dad)](https://pypi.org/project/orthogonal-sdk/)
-[![Python versions](https://img.shields.io/pypi/pyversions/orthogonal-sdk.svg?logo=python&logoColor=white)](https://pypi.org/project/orthogonal-sdk/)
-[![license](https://img.shields.io/pypi/l/orthogonal-sdk.svg?color=blue)](./LICENSE)
+[![python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
 </div>
 
