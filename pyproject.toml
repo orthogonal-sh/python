@@ -3,7 +3,7 @@ requires = ["hatchling>=1.21"]
 build-backend = "hatchling.build"
 
 [project]
-name = "orthogonal-sdk"
+name = "orth"
 version = "0.1.0"
 description = "Python SDK to call any API on the Orthogonal platform"
 readme = "README.md"
@@ -40,8 +40,8 @@ dev = [
 
 [project.urls]
 Homepage = "https://orthogonal.sh"
-Repository = "https://github.com/orthogonal-sh/orthogonal-python"
-Issues = "https://github.com/orthogonal-sh/orthogonal-python/issues"
+Repository = "https://github.com/orthogonal-sh/python"
+Issues = "https://github.com/orthogonal-sh/python/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orthogonal"]
